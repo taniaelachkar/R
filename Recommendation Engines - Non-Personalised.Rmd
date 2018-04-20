@@ -1,0 +1,243 @@
+Import libraries
+```{r}
+library(readr)
+```
+
+
+USING THE CRITICS DATASET
+
+Load the critics dataset
+```{r}
+critics <- read.csv('critics.csv', sep=',', dec=',')
+critics <- as.data.frame(critics)
+colnames(critics) <- gsub('.', ' ', colnames(critics), fixed=T)
+critics
+```
+
+Get the top 5 movies, ordered by the mean of their ratings
+```{r}
+# Calculate the mean of each column(movie), except for the first one (the User column)
+means1 <- colMeans(critics[,-1], na.rm=T)
+
+# Store the column names of the original critics dataframe, except for the first column (User)
+column <- colnames(critics)
+columns <- column[2:21]
+
+# Create a new dataframe called means2 and store the mean rating for each movie in that dataframe
+means2 <- data.frame(movie_name=columns, rating=means1, row.names=NULL)
+
+# Order this previous dataframe and store the top 5 movies (by rating) in a new dataframe called means4
+means3 <- means2[order(means2$rating,decreasing=T), ]
+means4 <- means3[1:5,]
+
+# Print the top 5 movies and their ratings
+paste(means4$rating, means4$movie_name, sep=',')
+```
+
+Get the top 5 movies, ordered by their ratings
+```{r}
+# Calculate, for each movie, the number of rows that are not NA (the number of ratings given for each movie)
+count <- sapply(critics[,-1], function(x) {sum(!is.na(x))})
+
+# Calculate, for each movie, the number of ratings that are greater than or equal to 4
+greater <- sapply(critics[,-1], function(x) {length(which(x>=4))})
+
+# Calculate, for each movie, the percentage of ratings that are greater than or equal to 4 and store the output in a dataframe
+ratings <- greater / count
+ratings2 <- data.frame(ratings)
+top <- data.frame(movies=rownames(ratings2),ratings,row.names=NULL)
+
+# Order the movies by rating distribution and store the top 5 in a new dataframe called top5
+top2 <- top[order(top$ratings,decreasing=T),]
+top5 <- top2[1:5,]
+
+# Print the top 5 movies by rating, along with their rating
+paste(top5$ratings,top5$movies,sep=',')
+```
+
+Get the top 5 movies, ordered by the number of ratings they received
+```{r}
+# Calculate, for each movie, the number of rows that are not NA (the number of ratings given for each movie) and store the output in a 
+# dataframe
+counts <- sapply(critics[,-1],function(x) {sum(!is.na(x))})
+counts2 <- data.frame(counts)
+counts3 <- data.frame(movies=rownames(counts2),numb_ratings=counts,row.names=NULL)
+
+# Order the movies by quantity of ratings and store the top 5 in a new dataframe called ordered2
+ordered <- counts3[order(counts3$numb_ratings,decreasing=T),]
+ordered2 <- ordered[1:5,]
+
+# Print the top 5 movies by quantity of ratings, along with their ratings
+paste(ordered2$numb_ratings,ordered2$movies,sep=',')
+```
+
+Get the top 5 movies recommended to users who also watched The Wizard of Oz
+```{r}
+# Remove the first column of the critics dataframe. It contains user names
+critics2 <- critics[,-1]
+
+# Subset the previous dataframe to contain the rows where there are no NA values for the Star Wars IV   A New Hope movie. Since we're comparing the 
+# percentage of other movie raters who also rated that movie, we need to keep the rows of the users who rate that movie, hence no NA
+critics3 <- critics2[which(!is.na(critics2$`Star Wars IV   A New Hope`)), ]
+
+# Calculate the number of users who rated each movie, divided by the number of users who rated Star Wars IV   A New Hope. The result, which is the 
+# percentage of other movie raters who also rated Star Wars IV   A New Hope is stored in a dataframe
+percents <- sapply(critics3, function(x){sum(!is.na(x))/nrow(critics3)})  
+percents2 <- data.frame(percents)
+percents3 <- data.frame(movies=rownames(percents2),occurences=percents,row.names=NULL)
+
+# Order the movies based on the highest percentage 
+p_order <- percents3[order(percents3$occurences,decreasing=T),]
+
+# Store the top 5 in a new dataframe called top5. We start the index at 2 because our reference movie, Star Wars IV   A New Hope, has the highest 
+# result of 1 because it's compared to itself
+p_order1 <- p_order[2:6,]
+
+# Print the top 5 movies by percentage of other users who also rated Star Wars IV   A New Hope
+paste(p_order1$occurences,p_order1$movies,sep=',')
+```
+
+Get the top 5 movie recommendations for users who also liked Babe
+```{r}
+# Subset the original critics dataframe to only include the rows of users who rated the movie Babe (no NA values)
+critics4 <- critics[!is.na(critics$Babe),c('User','Babe')]
+
+# Subset the previous dataframe to keep the rows of users who gave either 4 or 5 stars to Babe, meaning that they liked the movie
+critics5 <- critics4[(critics4$Babe==4|critics4$Babe==5),]
+
+# Subset the previous dataframe to remove the Babe column because it is our reference movie
+critics6 <- critics[,-ncol(critics)] 
+
+# Subset the previous dataframe to keep the users who rated Babe with 4 or 5 stars, but keeping all the movies, except for Babe
+critics7 <- critics6[which(critics$User %in% critics5$User),]
+
+# For these users, calculate the average rating they gave to other movies, and store the result in a dataframe
+mean1 <- colMeans(critics7[,-1], na.rm=T)
+mean2 <- data.frame(movie=colnames(critics6[,-1]),rating=mean1,row.names=NULL)
+
+# Order the dataframe by ratings and select the top 5
+mean3 <- mean2[order(mean2$rating,decreasing=T),]
+mean4 <- mean3[1:5,]
+
+# Print the top 5 movies for people who gave 4 or 5 stars to Babe
+paste(mean4$rating,mean4$movie,sep=',')
+```
+
+
+USING ANOTHER DATASET, MOVIELENS, WHICH HAS A DIFFERENT STORAGE LAYOUT THAN THE CRITICS DATASET WE HAVE BEEN WORKING WITH PREVIOUSLY
+
+Load the MovieLens dataset
+```{r}
+movies <- read.csv("movies.csv", sep=',')
+ratings <- read.csv("ratings.csv", sep=',')
+head(movies)
+head(ratings)
+```
+
+Merge both datasets into a new one and remove the movieId, genres, and timestamp variables
+```{r}
+mr0 <- merge(movies, ratings, by.x='movieId')
+mr <- mr0[,-c(1,3,6)]
+```
+
+Filter the dataframe and keep the rows/movies that are rated by at least 100 users
+```{r}
+agg <- aggregate(mr$rating, by=list(mr$title), FUN=function(x) {length(x)})
+agg1 <- subset(agg, x>100)
+agg2 <- agg1[, -2]
+mr1 <- mr[mr$title %in% agg2,]
+head(mr1)
+```
+
+Get the top 5 movies ordered by the mean of their ratings
+```{r}
+# Use the aggregate function to get the mean rating of each movie, grouping the result by movie
+mean_r <- aggregate(mr1$rating, by=list(mr1$title), FUN=function(x) {sum(x)/length(x)})
+
+# Convert the output to a data frame and ordering the ratings and keeping the top 5 results
+mean_r1 <- data.frame(movies=mean_r$Group.1, ratings=mean_r$x, row.names=NULL)
+mean_r2 <- mean_r1[order(mean_r1$ratings, decreasing=T), ]
+mean_r3 <- mean_r2[1:5,]
+
+# Print the top 5 movies by movie ratings
+paste(mean_r3$ratings, mean_r3$movies, sep=',')
+```
+
+Get the top 5 movies, ordered by their ratings 
+```{r}
+# For each movie, calculate the percentage of ratings that are 4 stars or grater
+percent_r <- aggregate(mr1$rating, by=list(mr1$title), FUN=function(x) {(length(which(x>=4)))/(sum(!is.na(x)))})
+
+# Rename the columns of this new data frame
+colnames(percent_r) <- c('movie', 'percent >= 4stars')
+
+# Order the movies by rating distribution 
+percent_r1 <- percent_r[order(percent_r$`percent >= 4stars`, decreasing=T),]
+percent_r2 <- percent_r1[1:5,]
+
+# Print the top 5 movies by rating distribution
+paste(percent_r2$`percent >= 4stars`, percent_r2$movie, sep=',')
+```
+
+Get the top 5 movies, ordered by the number of ratings they received
+```{r}
+# For each movie, calculate the number of rows that are not NA
+counts_r <- aggregate(mr1$rating, by=list(mr1$title), FUN=function(x) {sum(!is.na(x))})
+colnames(counts_r) <- c('movie', 'number_of_ratings')
+
+# Order the movies by quantity of ratings
+order_r <- counts_r[order(counts_r$number_of_ratings, decreasing=T), ]
+order_r1 <- order_r[1:5,]
+
+# Print the top 5 movies by quantity of ratings
+paste(order_r1$number_of_ratings, order_r1$movie, sep=',')
+```
+
+Get the top 5 movies recommended to users who also watched Toy Story
+```{r}
+# Subset the initial dataframe mr1 to include the users who rated Toy Story
+mr2 <- mr1[mr1$title=='Toy Story (1995)',]
+ts <- mr1[which(mr1$userId %in% mr2$userId), ]
+
+# Calculate the number of users who rated each movie, divided by the number of users who rated Toy Story. The result is the percentage of 
+# other movie raters who also rated Toy Story
+numb_users <- length(unique(mr2$userId))
+ts1 <- aggregate(ts$userId, by=list(ts$title), FUN=function(x) {(length(unique(x)))/numb_users})
+colnames(ts1) <- c('movie', 'percentage')
+
+# Order the movies based on the highest percentage 
+ts2 <- ts1[order(ts1$percentage, decreasing=T), ]
+
+# Store the top 5 in a new dataframe called ts3. We start the index at 2 because our reference movie, Toy Story, has the highest result of
+# 1 because it's compared to itself
+ts3 <- ts2[2:6,]
+
+# Print the top 5 movies that people who watched Toy Story also watched
+paste(ts3$percentage, ts3$movie, sep=',')
+```
+
+Get the top 5 movie recommendations for users who also liked Toy Story
+```{r}
+# Subset our mr1 dataframe to keep the rows for the movie Toy Story, meaning that we want to keep the users who have rated this movie
+mr2 <- mr1[mr1$title=='Toy Story (1995)',]
+
+# Subset the previous dataframe to keep the rows of users who gave either 4 or 5 stars to Toy Story
+mr3 <- mr2[(mr2$rating==4|mr2$rating==5),]
+
+# Subset the initial dataframe mr1 to remove the rows for the movie Toy Story because it is our reference movie
+mr4 <- mr1[!(mr1$title=='Toy Story (1995)'), ]
+
+# Subset the previous dataframe to keep the users who rated Toy Story with 4 or 5 stars, but keeping all the movies, except for Toy Story
+mr5 <- mr4[which(mr4$userId %in% mr3$userId), ]
+
+# For these users, calculate the average rating they gave to other movies
+avg_rating <- aggregate(mr5$rating, by=list(mr5$title), FUN=function(x) {sum(x)/length(x)})
+colnames(avg_rating) <- c('movie', 'average_rating')
+
+# Order the dataframe by ratings and select the top 5
+avg_rating1 <- avg_rating[order(avg_rating$average_rating, decreasing=T), ]
+avg_rating2 <- avg_rating1[1:5, ]
+
+# Print the top 5 movies that people who watched Toy Story also liked
+paste(avg_rating2$average_rating, avg_rating2$movie, sep=',')
+```
