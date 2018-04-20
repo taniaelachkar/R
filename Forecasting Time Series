@@ -1,0 +1,315 @@
+# Load the data
+data <- read.csv("/data.csv", sep=";", dec=",")
+View(data)
+
+# Install the necessary packages
+install.packages("fBasics")  
+install.packages("forecast")  
+install.packages("fGarch")  
+install.packages("fUnitRoots")
+library(fBasics)
+library(forecast) 
+library(fGarch) 
+library(fUnitRoots)
+
+
+
+## Find the best time series model for the ibex variable
+y <- data[,2]
+
+ts.plot(y)
+par(mfrow=c(2,1))
+acf(y,109)  # there's a cycle 
+pacf(y)  # only lag 1 is out of limits
+
+ndiffs(y, alpha=0.05, test=c("adf"))  # result says use 1 difference
+
+# let's do a difference of 1
+z<-diff(y,differences=1)
+
+ts.plot(z)  # seems stationary in the mean but not in the variance
+
+par(mfrow=c(2,1))
+acf(z)  # no lags out of limits
+pacf(z)  # no lags out of limits
+
+ndiffs(z, alpha=0.05, test=c("adf"))  # result says 0 difference, but there's still no stationarity, so we try with 2 differences
+
+adfTest(z, lags=15, type=c("c"))  # not stationary (p-value = 0.8316)
+
+mean(z)  # 6.41
+sd(z)  # 80.53
+skewness(z)  # -0.17
+kurtosis(z)  # -0.5 excess
+
+# difference of 2
+zz <- diff(z,differences=1)
+
+ts.plot(zz)  # seems stationary in the mean and in the variance
+
+par(mfrow=c(2,1))
+acf(zz)  # lag 1 clearly out of limits
+pacf(zz)  # lags 1 and 2 clearly out of limits
+
+adfTest(zz, lags=15, type=c("c"))  # stationary (p-value < 0.01)
+
+# testing for white noise
+Box.test(zz,lag=15, type="Ljung")  # not white noise (p-value = 0.0007)
+#based on graphs above and ADF test, the series zz is stationary , but the mean is not equal to zero, and there are many lags in the ACF 
+#and PACF that are clearly out of limits, and, based on the box test too => no white noise => we can build a linear model
+
+# fit the model with 2 differences and AR(8)
+fit1<-arima(y,order=c(8,2,0))  # PACF lag 8 is the last one out of limits, so 
+#we start testing with an AR model of order 8 and 2 differences (because we achieved stationarity of the series with 2 differences)
+fit1  # coefficient 8 is significant (different from 0) so we keep this model 
+
+# testing for residuals white noise
+ts.plot(fit1$residuals)  # the residuals seem stationary in the mean and variance
+
+par(mfrow=c(2,1))
+acf(fit1$residuals)  # no lags out of limits
+
+pacf(fit1$residuals)  # no lags out of limits
+
+Box.test(fit1$residuals,lag=15)  # accept H0, residuals are white noise 
+#(p-value = 0.92)
+
+# testing for residuals normality
+hist(fit1$residuals,prob=T,ylim=c(0,0.01),xlim=c(mean(fit1$residuals)-3*sd(fit1$residuals),mean(fit1$residuals)+3*sd(fit1$residuals)),
+    col="red")
+lines(density(fit1$residuals),lwd=2)
+mu<-mean(fit1$residuals)
+sigma<-sd(fit1$residuals)
+x<-seq(mu-3*sigma,mu+3*sigma,length=100)
+yy<-dnorm(x,mu,sigma)
+lines(x,yy,lwd=2,col="blue")
+#based on this histogram, the residuals seem normally distributed
+
+shapiro.test(fit1$residuals)  # accept H0 -> normality -> gaussian white noise 
+#(p-value = 0.93) -> strict white noise too (if we have normality in the residuals, it means that we have a very good model)
+
+# calculate the predictions and determine if they're significant
+y.pred1<-predict(fit1,n.ahead=5)
+y.pred1$pred 
+y.pred1$se  
+#calculating the confidence interval of the predictions, we notice that none of the intervals include zero, meaning that the predictions 
+#are significant and that we have a good model
+
+
+# fit another model with 2 differences and MA(4)
+fit2<-arima(y,order=c(0,2,4))  # ACF lag 4 is the last one out of limits, so 
+#we start testing with an MA model of order 4 and 2 differences (because we achieved stationarity of the series with 2 differences)
+fit2  # coefficient 4 is NOT significant (includes 0) so we remove it and try again 
+
+fit2 <- arima(y, order=c(0,2,3))
+fit2  # coefficient 3 is NOT significant (includes 0) so we remove it and try again
+
+fit2 <- arima(y, order=c(0,2,2))
+fit2  # coefficient 2 is NOT significant (includes 0) so we remove it and try again
+
+fit2 <- arima(y, order=c(0,2,1))
+fit2  # coefficient 1 is significant (different from 0) so we keep this model too
+
+# testing for residuals white noise
+ts.plot(fit2$residuals)  # the residuals seem stationary in the mean and variance
+
+par(mfrow=c(2,1))
+acf(fit2$residuals)  # no lags out of limits
+pacf(fit2$residuals)  # no lags out of limits
+
+Box.test(fit2$residuals,lag=15)  # accept H0, residuals are white noise 
+#(p-value = 0.70)
+
+# testing for residuals normality
+hist(fit2$residuals,prob=T,ylim=c(0,0.01),xlim=c(mean(fit2$residuals)-3*sd(fit2$residuals),mean(fit2$residuals)+3*sd(fit2$residuals)),
+    col="red")
+lines(density(fit2$residuals),lwd=2)
+mu<-mean(fit2$residuals)
+sigma<-sd(fit2$residuals)
+x<-seq(mu-3*sigma,mu+3*sigma,length=100)
+yy<-dnorm(x,mu,sigma)
+lines(x,yy,lwd=2,col="blue")
+#based on this histogram, the residuals seem normally distributed
+
+shapiro.test(fit2$residuals)  # accept H0 -> normality -> gaussian white noise 
+#(p-value = 0.54) -> strict white noise too (if we have normality in the residuals, it means that we have a very good model)
+
+# calculate the predictions and determine if they're significant
+y.pred2<-predict(fit2,n.ahead=5)
+y.pred2$pred 
+y.pred2$se  
+#calculating the confidence interval of the predictions, we notice that none of the intervals include zero, meaning that the predictions 
+#are significant and that we have a good model
+
+# compare model 1 and model 2 to see which one is the best model
+length(y)  # 109
+#we leave 104 values as the real values, and use the other 5 for predictions
+
+# run the 1st model with only 102 values
+fit3 <- arima(y[0:104],order=c(8,2,0))
+y.pred3 <- predict(fit3, n.ahead=5)
+
+# calculate MSFE for the 1st model
+error1 <- c()
+
+for (i in 1:5){
+  error1[i] <- y[(104 + i)] - y.pred3$pred[i]
+}
+
+MFSE1 <- mean(error1^2)*100
+
+# run the 2nd model with only 102 values
+fit4 <- arima(y[0:104],order=c(0,2,1))
+y.pred4 <- predict(fit4, n.ahead=5)
+
+# calculate MSFE for the 2nd model
+error2 <- c()
+
+for (i in 1:5){
+  error2[i] <- y[(104 + i)] - y.pred4$pred[i]
+}
+
+MFSE2 <- mean(error2^2)*100
+
+# compare the MSFE values of both models
+MFSE1  # 565111
+MFSE2  # 745685
+# the 1st model is the best according to the MSFE, because MSFE1 is smaller than MSFE2
+
+# calculate the MAPE for both models
+MAPE1 <- mean(abs(error1/(y[105:109])))*100
+MAPE2 <- mean(abs(error2/(y[105:109])))*100
+
+MAPE1  # 2.16
+MAPE2  # 2.40
+#the 1st model is the best according to the MAPE, because MAPE1 is smallerthan MAPE2
+
+# therefore, we conclude that the 1st model ARIMA(8,2,0) is the best model 
+
+
+
+## Find the best regression model for the ibex variable
+# make a regression model with all of the variables in our dataset, keeping ibex as the dependent variable
+r1 <- data[,2]
+r2 <- data[,3]
+r3 <- data[,4]
+r4 <- data[,5]
+
+# checking for multicolinearity
+cor(r2,r3)  # -0.84
+cor(r2,r4)  # -0.86
+cor(r3,r4)  # 0.86
+#there is multicolinearity because the variables are highly correlated with each other
+
+m1 <- lm(r1~r2+r3+r4)
+summary(m1)  # all the variables are significant (p-values are less than 0.05)
+
+# evaluating how good this model is (check if the residuals are white noise)
+plot(m1$residuals,type='l') 
+par(mfrow=c(2,1))
+acf(m1$residuals,lag=15)  
+pacf(m1$residuals,lag=15)
+#the residuals are not stationary, so we test to see how many differences to use to make them stationary in order to be able to see 
+#if the residuals are white noise
+
+ndiffs(m1$residuals, alpha=0.05, test=c("adf"))  # take 1 difference
+
+# we take 1 difference for every single variable
+c1 <- diff(r1)
+c2 <- diff(r2)
+c3 <- diff(r3)
+c4 <- diff(r4)
+
+# making a new linear model with the 1-difference variables
+m2 <- lm(c1~c2+c3+c4)
+summary(m2)  # c2 and c4 are significant, but the c3 variable is not significant
+#(p-value = 0.94) so we build a new linear model without c3
+
+# making a new linear model without the c3 variable (short-term rate)
+m3 <- lm(c1~c2+c4)
+summary(m3)  # both variables in this model (exchange rate and long-term rate) are significant (their p-values are less than 0.05) 
+#so this model is significant
+
+ndiffs(m3$residuals, alpha=0.05, test=c("adf"))  # 0 differences needed
+
+# evaluating how good this regression model is (check if the residuals are white noise)
+plot(m3$residuals,type='l')  # the residuals of this model seem stationary
+par(mfrow=c(2,1))
+acf(m3$residuals,lag=15)  
+pacf(m3$residuals,lag=15)
+
+ndiffs(m3$residuals, alpha=0.05, test=c("adf"))  # no need to take any more differences
+
+Box.test(m3$residuals,lag=15)  # accept H0, residuals are white noise 
+#(p-value = 0.66)
+#according to the box test, the residuals of this linear regression model are white noise. However, looking at the ACF and the PACF, 
+#we notice that lag 4 is out of limits both in the ACF and in the PACF
+
+
+
+## Find the best regression model with time series error for the ibex variable
+# build an arima model with the ibex variable along with the exchange rate and the long-term rate variables (all of them with one 
+#transformation)
+var <- cbind(c2, c4)
+lfit1 <- arima(c1,order=c(4,0,0),xreg=var)
+lfit1  # the variables are significant so this model is significant
+
+# testing for residuals white noise
+ts.plot(lfit1$residuals)  # the residuals seem stationary in the mean and variance
+
+par(mfrow=c(2,1))
+acf(lfit1$residuals)  # no lags out of limits
+pacf(lfit1$residuals)  # no lags out of limits
+
+Box.test(lfit1$residuals,lag=15)  # accept H0, residuals are white noise 
+#(p-value = 0.99)
+
+# testing for residuals normality
+hist(lfit1$residuals,prob=T,ylim=c(0,0.01),xlim=c(mean(lfit1$residuals)-3*sd(lfit1$residuals),mean(lfit1$residuals)+3*sd(lfit1$residuals)),
+    col="red")
+lines(density(lfit1$residuals),lwd=2)
+mu<-mean(lfit1$residuals)
+sigma<-sd(lfit1$residuals)
+x<-seq(mu-3*sigma,mu+3*sigma,length=100)
+yy<-dnorm(x,mu,sigma)
+lines(x,yy,lwd=2,col="blue")
+#based on this histogram, the residuals seem normally distributed
+
+shapiro.test(lfit1$residuals)  # accept H0 -> the residuals are normally distributed
+#(p-value = 0.98)
+
+ibex = 3.4567 + 0.1393*ibex(t-1) - 0.1314*ibex(t-2) + 0.1227*ibex(t-3) 
+       - 0.2376*ibex(t-4) + 971.9297*exchange_rate - 185.2843*long_term_rate
+
+
+
+## Choose the best of the previous models to explain the ibex variable 
+summary(fit1)  # RMSE = 79.32
+
+summary(m3)  # RMSE = 58.04
+
+summary(lfit1)  # RMSE = 54.94
+
+#the model we built in the previous block is the best model according to the estimate of the residual variance because it has the 
+#lowest RMSE score 
+
+
+
+## For the best model, compute the one-step-ahead point prediction and confidence interval for the ibex variable 
+# Since we previously took one difference of every single variable (ibex, exchange rate, short-term rate and long-term rate), we now 
+# need to take play with the equation of the final model to undo the regular differences. Since we dropped the variable short_term_rate 
+# because it was not significant, we need to undo the regular difference of the variables ibex, exchange rate and long-term rate. 
+# Consequently, the final model expressed in only one equation is the following. To get the one-step-ahead ibex estimate we used the 
+# values provided in the case. Long-term interest rates at 10.76% and exchange rate at 0.781 ???/$.
+
+ibex = ibex(t-1) + 971.9297*(exchange_rate[t] - exchange_rate[t-1])
+       - 185.2843*(long_term_rate[t] - long_term_rate[t-1])
+       + 3.4567 + 0.1393*ibex(t-1) - 0.1314*ibex(t-2) + 0.1227*ibex(t-3) 
+       - 0.2376*ibex(t-4)
+
+ibex = (3357 + 971.9297*(0.781 - 0.724)
+        - 185.2843* (10.76 - 11.5)
+        + 3.4567 + 0.1393*3357 - 0.1314*3302 + 0.1227*3184 
+        - 0.2376*3249)
+
+ibex  # ibex = 3205.429 
